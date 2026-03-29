@@ -4,11 +4,12 @@
 
 ## 功能特性
 
-- sing-box 核心，支持 VLESS 协议
+- sing-box 1.13.4 核心，支持 VLESS 协议
 - Cloudflare Tunnel 持久化访问
 - Nezha Agent 监控支持（可选）
 - Docker 容器化部署
 - 支持 x86_64 架构
+- 自动识别国内/国外网络，选用最优镜像源
 
 ## 快速开始
 

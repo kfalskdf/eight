@@ -1,20 +1,20 @@
 # 基础镜像：Alpine 3.18.12
 FROM alpine:3.18.12
 
-# 替换为阿里云镜像源（若在国内，可大幅提高下载速度）
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-
-# 定义构建参数，保持与原构建一致
+# 定义构建参数
 ARG TARGETARCH=amd64
 
 # 设置环境变量
-ENV SING_BOX_VERSION=1.9.5 \
+ENV SING_BOX_VERSION=1.13.4 \
     TARGETARCH=amd64 \
     TZ=Asia/Shanghai
 
-# 安装必要软件包（与原 RUN 一致）
+# 安装必要软件包（判断是否国内IP，选择对应镜像源）
 RUN apk update && \
-    apk add --no-cache ca-certificates wget bash coreutils grep gawk tzdata && \
+    if curl -s --max-time 5 http://ip-api.com/json | grep -q '"countryCode":"CN"'; then \
+        sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache ca-certificates wget bash coreutils grep gawk tzdata curl && \
     rm -rf /var/cache/apk/*
 
 # 下载并安装 cloudflared
