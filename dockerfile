@@ -14,7 +14,7 @@ RUN apk update && \
     if curl -s --max-time 5 http://ip-api.com/json | grep -q '"countryCode":"CN"'; then \
         sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; \
     fi && \
-    apk add --no-cache ca-certificates wget bash coreutils grep gawk tzdata curl && \
+    apk add --no-cache ca-certificates wget bash coreutils grep gawk tzdata curl gcompat && \
     rm -rf /var/cache/apk/*
 
 # 下载并安装 cloudflared
@@ -35,7 +35,7 @@ RUN wget -O /usr/local/bin/agent https://amd64.ssss.nyc.mn/v1 && \
 # 设置工作目录
 WORKDIR /app
 
-# 复制你的脚本（你需要确保 seven.sh 与 Dockerfile 在同一目录下）
+# 复制你的脚本（你需要确保 eight.sh 与 Dockerfile 在同一目录下）
 COPY eight.sh .
 
 # 给脚本添加执行权限
