@@ -17,6 +17,9 @@ RUN apk update && \
     apk add --no-cache ca-certificates wget bash coreutils grep gawk tzdata curl gcompat && \
     rm -rf /var/cache/apk/*
 
+# 设置工作目录
+WORKDIR /app
+
 # 下载并安装 cloudflared
 RUN wget "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${TARGETARCH}" -O /usr/local/bin/cloudflared && \
     chmod +x /usr/local/bin/cloudflared
@@ -31,9 +34,6 @@ RUN wget "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VER
 # 下载并安装 agent（放在 /usr/local/bin/）
 RUN wget -O /usr/local/bin/agent https://amd64.ssss.nyc.mn/v1 && \
     chmod +x /usr/local/bin/agent
-
-# 设置工作目录
-WORKDIR /app
 
 # 复制你的脚本（你需要确保 eight.sh 与 Dockerfile 在同一目录下）
 COPY eight.sh .
