@@ -6,6 +6,29 @@ command -v /usr/local/bin/cloudflared >/dev/null 2>&1 || { echo "错误：未找
 command -v /usr/local/bin/agent >/dev/null 2>&1 || { echo "错误：未找到 agent。"; exit 1; }
 command -v base64 >/dev/null 2>&1 || { echo "错误：未找到 base64 (是否缺少 coreutils？)。"; exit 1; }
 
+# --- 子进程 PID（供优雅关闭使用）---
+SINGBOX_PID=""
+CLOUDFLARED_PID=""
+AGENT_PID=""
+
+# --- 优雅关闭 ---
+# 本脚本在容器内是 PID 1，bash 默认不会把 SIGTERM 转发给子进程，
+# 因此必须显式处理，否则 docker stop 会直接强杀，导致连接与日志状态异常。
+shutdown() {
+    echo ""
+    echo "收到退出信号，正在停止子进程..."
+    for pid in "$CLOUDFLARED_PID" "$AGENT_PID" "$SINGBOX_PID"; do
+        if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; fi
+    done
+    sleep 2
+    for pid in "$CLOUDFLARED_PID" "$AGENT_PID" "$SINGBOX_PID"; do
+        if [ -n "$pid" ]; then kill -KILL "$pid" 2>/dev/null || true; fi
+    done
+    echo "已退出。"
+    exit 0
+}
+trap shutdown TERM INT
+
 # --- Nezha Agent 环境变量处理 ---
 NEZHA_SERVER="${nezha_server:-}"
 NEZHA_KEY="${nezha_key:-}"
@@ -58,6 +81,7 @@ EOF
 echo "eight.json 已创建 (端口: 2777)。"
 
 nohup /usr/local/bin/sing-box run -c eight.json > /dev/null 2>&1 &
+SINGBOX_PID=$!
 sleep 2
 ps | grep "sing-box" | grep -v 'grep'
 echo "sing-box 已启动。"
@@ -68,16 +92,20 @@ if [ -n "$NEZHA_SERVER" ] && [ -n "$NEZHA_KEY" ]; then
     echo "检测到 Nezha Agent 配置，正在启动..."
     
     # 生成 config.yaml 配置文件
+    # 安全默认值：
+    #   disable_command_execute: true  —— 禁止 Dashboard 远端在本容器执行命令
+    #   insecure_tls: false            —— 强制校验 Dashboard 的 TLS 证书
+    # 若你的 Dashboard 使用自签名证书导致 Agent 无法上线，可将 insecure_tls 改回 true
     cat > config.yaml <<EOF
 client_secret: ${NEZHA_KEY}
 debug: false
 disable_auto_update: true
-disable_command_execute: false
+disable_command_execute: true
 disable_force_update: true
 disable_nat: false
 disable_send_query: false
 gpu: false
-insecure_tls: true
+insecure_tls: false
 ip_report_period: 1800
 report_delay: 4
 server: ${NEZHA_SERVER}
@@ -127,6 +155,7 @@ if [ -n "$token" ] && [ -n "$domain" ]; then
     echo "Cloudflare Tunnel Token: [已隐藏]"
     echo "正在启动固定的 Cloudflare 隧道..."
     nohup /usr/local/bin/cloudflared tunnel --no-autoupdate run --token "${token}" > ./eight.log 2>&1 &
+    CLOUDFLARED_PID=$!
 
     echo "正在等待 Cloudflare 固定隧道连接... (最多 30 秒)"
     for attempt in $(seq 1 15); do
@@ -144,6 +173,7 @@ else
     echo "未提供 token 和/或 domain 环境变量，将使用【临时隧道模式】。"
     echo "正在启动临时的 Cloudflare 隧道..."
     nohup /usr/local/bin/cloudflared tunnel --url http://localhost:2777 --edge-ip-version auto --no-autoupdate --protocol http2 > ./eight.log 2>&1 &
+    CLOUDFLARED_PID=$!
 
     echo "正在等待 Cloudflare 临时隧道 URL... (最多 30 秒)"
     for attempt in $(seq 1 15); do
@@ -197,7 +227,10 @@ if [ "$TUNNEL_CONNECTED" = "true" ]; then
     echo "--------------------------------------------------"
     echo ""
     echo "正在显示隧道日志 (eight.log)："
-    tail -f ./eight.log
+    # 后台运行 tail 并 wait：前台命令会阻塞 bash 的 trap，导致 docker stop 无法优雅退出
+    tail -f ./eight.log &
+    TAIL_PID=$!
+    wait "$TAIL_PID"
 else
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo "Cloudflare $TUNNEL_MODE 连接失败 (超时 30 秒)。"
